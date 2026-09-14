@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>オセロ</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="container">
+    <h1>オセロ</h1>
+
+    <div class="scores">
+      <div class="score">
+        <span class="disc black"></span>
+        <span id="black-score">2</span>
+      </div>
+      <div class="score">
+        <span class="disc white"></span>
+        <span id="white-score">2</span>
+      </div>
+    </div>
+
+    <div id="message" class="message">黒の番です</div>
+
+    <div id="board" class="board"></div>
+
+    <button id="new-game" class="new-game">新しいゲーム</button>
+  </div>
+
+  <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
