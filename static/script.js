@@ -3,9 +3,17 @@ const messageEl = document.getElementById("message");
 const blackScoreEl = document.getElementById("black-score");
 const whiteScoreEl = document.getElementById("white-score");
 const newGameBtn = document.getElementById("new-game");
+const modeInputs = document.querySelectorAll('input[name="mode"]');
 
 let state = null;
 let busy = false;
+
+function currentMode() {
+  for (const input of modeInputs) {
+    if (input.checked) return input.value;
+  }
+  return "pvp";
+}
 
 function createCells() {
   boardEl.innerHTML = "";
@@ -52,8 +60,15 @@ async function onCellClick(r, c) {
   const validSet = new Set((state.validMoves || []).map(([rr, cc]) => rr * 8 + cc));
   if (!validSet.has(r * 8 + c)) return;
 
+  const mode = currentMode();
+  // プレイヤーの手番開始
   busy = true;
   try {
+    // CPU対戦かつ、この手のあとCPUの番になるなら「考え中」表示
+    if (mode === "cpu") {
+      messageEl.textContent = "CPU考え中…";
+    }
+
     const res = await fetch("/api/move", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -74,9 +89,14 @@ async function onCellClick(r, c) {
 }
 
 async function newGame() {
+  const mode = currentMode();
   busy = true;
   try {
-    const res = await fetch("/api/new", { method: "POST" });
+    const res = await fetch("/api/new", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode }),
+    });
     render(await res.json());
   } catch (e) {
     messageEl.textContent = "通信エラーが発生しました";
@@ -86,6 +106,13 @@ async function newGame() {
 }
 
 newGameBtn.addEventListener("click", newGame);
+
+for (const input of modeInputs) {
+  input.addEventListener("change", () => {
+    // モードを変えたら最初から
+    newGame();
+  });
+}
 
 createCells();
 newGame();
