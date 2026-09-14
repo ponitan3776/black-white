@@ -16,7 +16,6 @@ DIRECTIONS = [
 
 PLAYER_NAME = {BLACK: "黒", WHITE: "白"}
 
-# 位置の評価値（角が高く、角の隣が低い）
 WEIGHTS = [
     [ 120, -20,  20,   5,   5,  20, -20,  120],
     [ -20, -40,  -5,  -5,  -5,  -5, -40,  -20],
@@ -28,11 +27,10 @@ WEIGHTS = [
     [ 120, -20,  20,   5,   5,  20, -20,  120],
 ]
 
-AI_DEPTH = 4          # CPUの読みの深さ（大きいほど強いが遅い）
-AI_PLAYER = WHITE     # CPUは白（＝後手）
+AI_DEPTH = 4
+AI_PLAYER = WHITE
 
 
-# ---------- 基本ロジック ----------
 def initial_board():
     board = [[EMPTY] * BOARD_SIZE for _ in range(BOARD_SIZE)]
     board[3][3] = WHITE
@@ -43,10 +41,8 @@ def initial_board():
 
 
 def find_moves(board, player):
-    """player が置けるマスと、そのときに裏返る石の一覧。"""
     moves = {}
     opponent = WHITE if player == BLACK else BLACK
-
     for row in range(BOARD_SIZE):
         for col in range(BOARD_SIZE):
             if board[row][col] != EMPTY:
@@ -75,7 +71,6 @@ def count_stones(board):
 
 
 def apply_move_board(board, row, col, flips, player):
-    """新しい盤面を返す（元は変更しない）。"""
     new_board = [r[:] for r in board]
     new_board[row][col] = player
     for r, c in flips:
@@ -84,18 +79,14 @@ def apply_move_board(board, row, col, flips, player):
 
 
 def next_turn(board, current):
-    """次の手番・終了フラグ・メッセージを返す。"""
     opponent = WHITE if current == BLACK else BLACK
-
     if find_moves(board, opponent):
         return opponent, False, f"{PLAYER_NAME[opponent]}の番です"
-
     if find_moves(board, current):
         return current, False, (
             f"{PLAYER_NAME[opponent]}は置ける場所がないためパスしました。"
             f"{PLAYER_NAME[current]}の番です"
         )
-
     black, white = count_stones(board)
     if black > white:
         msg = f"ゲーム終了！ 黒の勝ち（{black} - {white}）"
@@ -119,11 +110,8 @@ def build_state(board, current, finished, message):
     }
 
 
-# ---------- AI ----------
 def evaluate(board, ai_player):
-    """ai_player 視点のスコア。位置＋着手可能数。"""
     opponent = WHITE if ai_player == BLACK else BLACK
-
     positional = 0
     for r in range(BOARD_SIZE):
         for c in range(BOARD_SIZE):
@@ -132,33 +120,24 @@ def evaluate(board, ai_player):
                 positional += WEIGHTS[r][c]
             elif v == opponent:
                 positional -= WEIGHTS[r][c]
-
     my_moves = len(find_moves(board, ai_player))
     opp_moves = len(find_moves(board, opponent))
     mobility = (my_moves - opp_moves) * 8
-
     return positional + mobility
 
 
 def minimax(board, player, depth, alpha, beta, ai_player):
-    """αβ枝刈り付きミニマックス。戻り値: (評価値, 最善手)"""
     opponent = WHITE if player == BLACK else BLACK
     moves = find_moves(board, player)
-
     if not moves:
-        # パス or 終局
         if not find_moves(board, opponent):
             black, white = count_stones(board)
             diff = (black - white) if ai_player == BLACK else (white - black)
             return diff * 10000, None
         return minimax(board, opponent, depth, alpha, beta, ai_player)
-
     if depth == 0:
         return evaluate(board, ai_player), None
-
-    # ムーブオーダリング（評価の高いマスから読むと枝刈りが効く）
     ordered = sorted(moves.items(), key=lambda x: -WEIGHTS[x[0][0]][x[0][1]])
-
     best_move = None
     if player == ai_player:
         max_eval = -float("inf")
@@ -194,7 +173,6 @@ def choose_ai_move(board, ai_player, depth=AI_DEPTH):
     return move
 
 
-# ---------- セッション操作 ----------
 def start_new_game(mode="pvp"):
     board = initial_board()
     session["board"] = board
@@ -204,7 +182,6 @@ def start_new_game(mode="pvp"):
     return build_state(board, BLACK, False, "黒の番です")
 
 
-# ---------- ルーティング ----------
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -221,13 +198,13 @@ def api_new():
 
 @app.route("/api/move", methods=["POST"])
 def api_move():
+    """プレイヤーの手だけを適用する。"""
     if "board" not in session:
         return jsonify(start_new_game())
 
     board = session["board"]
     current = session["current"]
     finished = session["finished"]
-    mode = session.get("mode", "pvp")
 
     if finished:
         return jsonify({"error": "ゲームは終了しています"}), 400
@@ -244,21 +221,44 @@ def api_move():
     if (row, col) not in moves:
         return jsonify({"error": "そこには置けません"}), 400
 
-    # プレイヤーの手を適用
     board = apply_move_board(board, row, col, moves[(row, col)], current)
     current, finished, message = next_turn(board, current)
 
-    # CPUの手番ならAIで指す
-    if not finished and mode == "cpu" and current == AI_PLAYER:
+    session["board"] = board
+    session["current"] = current
+    session["finished"] = finished
+
+    return jsonify(build_state(board, current, finished, message))
+
+
+@app.route("/api/cpu", methods=["POST"])
+def api_cpu():
+    """CPUの手を1手だけ適用する。"""
+    if "board" not in session:
+        return jsonify({"error": "ゲームがありません"}), 400
+
+    board = session["board"]
+    current = session["current"]
+    finished = session["finished"]
+    mode = session.get("mode", "pvp")
+
+    if finished:
+        return jsonify({"error": "ゲームは終了しています"}), 400
+    if mode != "cpu" or current != AI_PLAYER:
+        return jsonify({"error": "CPUの手番ではありません"}), 400
+
+    moves = find_moves(board, AI_PLAYER)
+    if moves:
         ai_move = choose_ai_move(board, AI_PLAYER)
         if ai_move is not None:
-            ai_flips = find_moves(board, AI_PLAYER)[ai_move]
-            board = apply_move_board(board, ai_move[0], ai_move[1], ai_flips, AI_PLAYER)
-            current, finished, message2 = next_turn(board, current)
-            message = f"CPUが ({ai_move[0]}, {ai_move[1]}) に置きました。{message2}"
+            flips = moves[ai_move]
+            board = apply_move_board(board, ai_move[0], ai_move[1], flips, AI_PLAYER)
+            current, finished, next_msg = next_turn(board, current)
+            message = f"CPUが ({ai_move[0] + 1}, {ai_move[1] + 1}) に置きました。{next_msg}"
         else:
-            # ありえないが念のため
             current, finished, message = next_turn(board, current)
+    else:
+        current, finished, message = next_turn(board, current)
 
     session["board"] = board
     session["current"] = current
